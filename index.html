@@ -71,7 +71,7 @@
     #seriesLogo {
       position: absolute;
       top: 20px; left: 20px;
-      height: 100px;
+      height: 200px;   /* doubled size for clearer logo */
       width: auto;
       object-fit: contain;
     }
@@ -442,9 +442,9 @@ You are a helpful assistant. Given a TV series title, episode title, and episode
         ep.imageUrl = imgRes.url;
       }
 
-      // 3) AI: generate a one-time series logo
+      // 3) AI: generate a one-time series logo with transparent background
       const logoRes = await websim.imageGen({
-        prompt: `A stylized logo for the TV series titled "${data.seriesTitle}".`,
+        prompt: `A clean, flat-design logo for the TV series titled "${data.seriesTitle}", centered on a fully transparent background, no text or additional elements.`,
         transparent: true,
         aspect_ratio: '1:1'
       });
