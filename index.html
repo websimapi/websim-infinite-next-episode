@@ -356,7 +356,6 @@
       text-overflow: ellipsis;
     }
   </style>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&display=swap">
 </head>
 <body>
   <!-- Search Bar + Existing Series List -->
@@ -401,30 +400,6 @@
   </div>
 
   <script type="module">
-    (async () => {
-      if (navigator.webdriver) {
-        // Hide your main app content if desired
-        const searchContainer = document.getElementById('searchContainer');
-        const player = document.getElementById('player');
-        if (searchContainer) searchContainer.style.display = 'none';
-        if (player) player.style.display = 'none';
-    
-        const overlay = document.createElement('div');
-        overlay.id = 'title-screen-overlay';
-        Object.assign(overlay.style, {
-          position: 'fixed', top: '0', left: '0', width: '100vw',
-          height: '100vh', background: '#000', zIndex: '99999',
-          overflow: 'hidden'
-        });
-        document.body.prepend(overlay);
-    
-        const imageHTML = `<img src="https://api.websim.com/blobs/0197e282-b09d-79c4-8158-c1e284f799c1.png" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" alt="Content Flagged text on white background" />`;
-        const textHTML = `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffffff; font-size: 72px; font-family: 'Bungee', sans-serif; text-shadow: 2px 2px 8px #000000;  text-align: center; white-space: pre-wrap; width: 90%; line-height: 1.2;">Flagged!</div>`;
-        
-        overlay.innerHTML = imageHTML + textHTML;
-      }
-    })();
-
     import { WebsimSocket } from '@websim/websim-socket';
 
     // DOM refs
@@ -472,7 +447,7 @@
         const card = document.createElement('div');
         card.className = 'seriesCard';
         card.innerHTML = `
-          <img src="${rec.logoUrl}" alt="${rec.title}" />
+          <img src="${rec.logoUrl || './placeholder.png'}" alt="${rec.title}" />
           <h3>${rec.title}</h3>
           <div class="author-info">
             <img src="https://images.websim.com/avatar/${rec.username}" alt="${rec.username}" />
@@ -486,33 +461,16 @@
 
     async function loadExistingSeries(rec) {
       searchContainer.style.display = 'none';
-      if (rec.username === currentUser.username) {
-        const seasons = JSON.parse(rec.seasons);
-        seriesData = {
-          seriesTitle: rec.title,
-          seriesLogoUrl: rec.logoUrl,
-          seasons,
-          currentSeason: 0,
-          id: rec.id,
-          forked_from: rec.forked_from
-        };
-      } else {
-        const forked = await room.collection('series').upsert({
-          title: rec.title,
-          logoUrl: rec.logoUrl,
-          seasons: rec.seasons,
-          forked_from: rec.id
-        });
-        const seasons = JSON.parse(forked.seasons);
-        seriesData = {
-          seriesTitle: forked.title,
-          seriesLogoUrl: forked.logoUrl,
-          seasons,
-          currentSeason: 0,
-          id: forked.id,
-          forked_from: forked.forked_from
-        };
-      }
+      const seasons = JSON.parse(rec.seasons);
+      seriesData = {
+        seriesTitle: rec.title,
+        seriesLogoUrl: rec.logoUrl,
+        seasons,
+        currentSeason: 0,
+        id: rec.id, // ID of the original record
+        forked_from: rec.forked_from,
+        ownerUsername: rec.username // Track the original owner
+      };
       initPlayer();
     }
 
@@ -739,8 +697,26 @@ You are a helpful assistant. Given a TV series title, its season number, an epis
       progressBar.style.transition = 'none';
       progressBar.style.width = '0';
       nextButton.querySelector('span').textContent = 'Loading...';
+
+      // --- FORKING LOGIC ---
+      // If we are viewing another user's series, this is the moment to fork it,
+      // because new content is about to be generated.
+      if (seriesData.ownerUsername !== currentUser.username) {
+        const forkedRecord = await room.collection('series').upsert({
+          title: seriesData.seriesTitle,
+          logoUrl: seriesData.seriesLogoUrl,
+          seasons: JSON.stringify(seriesData.seasons), // Persist current state
+          forked_from: seriesData.id // Link back to the original series
+        });
+
+        // Update our in-memory seriesData to reflect the newly created record
+        seriesData.id = forkedRecord.id;
+        seriesData.ownerUsername = currentUser.username; // We are the new owner
+        seriesData.forked_from = forkedRecord.forked_from; // Maintain the fork lineage
+      }
+
       await generateNextSeason();
-      // Persist updated seasons
+      // Persist updated seasons to the correct record (either original or forked)
       await room.collection('series').upsert({
         id: seriesData.id,
         seasons: JSON.stringify(seriesData.seasons)
