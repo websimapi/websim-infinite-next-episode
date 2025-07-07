@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Infinite Next Episode</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    #searchContainer {
+      position: absolute;
+      top: 20px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+    }
+    #searchContainer input, 
+    #searchContainer button {
+      padding: 10px; font-size: 1em;
+    }
+    #player {
+      display: none;
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      background-size: cover;
+      background-position: center;
+    }
+    #seriesTitle {
+      position: absolute;
+      top: 20px; left: 20px;
+      font-size: 2em; color: white;
+      text-shadow: 0 0 5px rgba(0,0,0,0.7);
+    }
+    #episodeTitle {
+      position: absolute;
+      top: 60px; left: 20px;
+      font-size: 1.5em; color: white;
+      text-shadow: 0 0 5px rgba(0,0,0,0.7);
+    }
+    #controls {
+      position: absolute;
+      bottom: 20px; right: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+    }
+    #upNextContainer {
+      width: 120px; height: 68px;
+      border: 2px solid white;
+      overflow: hidden;
+    }
+    #upNextContainer img {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    button {
+      position: relative;
+      padding: 10px 20px;
+      font-size: 1em;
+      color: white;
+      background: transparent;
+      border: 2px solid white;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    #nextButton .progress {
+      position: absolute;
+      top: 0; left: 0;
+      height: 100%; width: 0;
+      background: linear-gradient(to right, #4caf50, #81c784);
+      z-index: 1;
+      transition: width 15s linear;
+    }
+    #nextButton span,
+    #moreButton span {
+      position: relative;
+      z-index: 2;
+    }
+    #moreEpisodesModal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+    #moreEpisodesModal .modalContent {
+      background: #fff;
+      padding: 20px;
+      max-height: 80%;
+      overflow-y: auto;
+      width: 80%;
+      border-radius: 8px;
+      position: relative;
+    }
+    #moreEpisodesModal .modalContent img {
+      width: 100%;
+      max-width: 200px;
+      display: block;
+      margin-bottom: 10px;
+    }
+    #closeModal {
+      position: absolute;
+      top: 10px; right: 10px;
+      background: transparent;
+      border: none;
+      font-size: 1.5em;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <!-- Search Bar -->
+  <div id="searchContainer">
+    <input id="seriesSearch" type="text" placeholder="Search for a series..." />
+    <button id="searchButton">Search</button>
+  </div>
+
+  <!-- Main Player -->
+  <div id="player">
+    <div id="seriesTitle"></div>
+    <div id="episodeTitle"></div>
+    <div id="controls">
+      <div id="upNextContainer">
+        <img id="upNextImage" src="" alt="Up Next" />
+      </div>
+      <button id="nextButton">
+        <div class="progress"></div>
+        <span>Next Episode</span>
+      </button>
+      <button id="moreButton">
+        <span>More Episodes</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- More Episodes Modal -->
+  <div id="moreEpisodesModal">
+    <div class="modalContent">
+      <button id="closeModal">&times;</button>
+      <div id="episodeList"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    const searchContainer = document.getElementById('searchContainer');
+    const searchButton = document.getElementById('searchButton');
+    const seriesSearch = document.getElementById('seriesSearch');
+    const player = document.getElementById('player');
+    const seriesTitleElem = document.getElementById('seriesTitle');
+    const episodeTitleElem = document.getElementById('episodeTitle');
+    const upNextImage = document.getElementById('upNextImage');
+    const nextButton = document.getElementById('nextButton');
+    const moreButton = document.getElementById('moreButton');
+    const progressBar = nextButton.querySelector('.progress');
+    const moreModal = document.getElementById('moreEpisodesModal');
+    const closeModal = document.getElementById('closeModal');
+    const episodeList = document.getElementById('episodeList');
+
+    let seriesData = null;
+    let currentIndex = 0;
+    let autoTimer = null;
+
+    searchButton.addEventListener('click', async () => {
+      const query = seriesSearch.value.trim();
+      if (!query) return;
+      searchButton.disabled = true;
+      searchButton.textContent = 'Loading...';
+      seriesData = await generateSeries(query);
+      initPlayer();
+    });
+
+    async function generateSeries(query) {
+      // 1) AI: series metadata & plots
+      const completion = await websim.chat.completions.create({
+        messages: [
+          {
+            role: 'system',
+            content: `
+You are a helpful assistant. Generate a TV series with exactly one season of episodes based on the user's prompt.
+Respond directly with JSON following this schema, and no extra text:
+{
+  seriesTitle: string;
+  seasonPlot: string;
+  episodes: [
+    { title: string; plot: string; }
+  ];
+}`
+          },
+          { role: 'user', content: query }
+        ],
+        json: true
+      });
+      const data = JSON.parse(completion.content);
+
+      // 2) AI: generate poster image for each episode
+      for (let ep of data.episodes) {
+        const imgRes = await websim.imageGen({
+          prompt: `A promotional poster for the episode titled "${ep.title}" of the series "${data.seriesTitle}", plot: ${ep.plot}`,
+          aspect_ratio: '16:9'
+        });
+        ep.imageUrl = imgRes.url;
+      }
+      return data;
+    }
+
+    function initPlayer() {
+      searchContainer.style.display = 'none';
+      player.style.display = 'block';
+      currentIndex = 0;
+      updateUI();
+      startAutoNext();
+    }
+
+    function updateUI() {
+      const current = seriesData.episodes[currentIndex];
+      document.body.style.background = `url('${current.imageUrl}') center/cover no-repeat`;
+      seriesTitleElem.textContent = seriesData.seriesTitle;
+      episodeTitleElem.textContent = current.title;
+
+      const nextEp = seriesData.episodes[currentIndex + 1];
+      if (nextEp) {
+        upNextImage.src = nextEp.imageUrl;
+        nextButton.disabled = false;
+      } else {
+        upNextImage.src = '';
+        nextButton.disabled = true;
+        clearTimeout(autoTimer);
+        progressBar.style.transition = 'none';
+        progressBar.style.width = '0';
+      }
+    }
+
+    function startAutoNext() {
+      progressBar.style.transition = 'none';
+      progressBar.style.width = '0';
+      requestAnimationFrame(() => {
+        progressBar.style.transition = 'width 15s linear';
+        progressBar.style.width = '100%';
+      });
+      autoTimer = setTimeout(() => {
+        nextEpisode();
+      }, 15000);
+    }
+
+    function nextEpisode() {
+      clearTimeout(autoTimer);
+      currentIndex++;
+      if (currentIndex < seriesData.episodes.length) {
+        updateUI();
+        startAutoNext();
+      }
+    }
+
+    nextButton.addEventListener('click', () => {
+      clearTimeout(autoTimer);
+      nextEpisode();
+    });
+
+    moreButton.addEventListener('click', () => {
+      episodeList.innerHTML = '';
+      seriesData.episodes.forEach(ep => {
+        const div = document.createElement('div');
+        div.innerHTML = `
+          <img src="${ep.imageUrl}" alt="${ep.title}" />
+          <h3>${ep.title}</h3>
+          <p>${ep.plot}</p>
+        `;
+        episodeList.appendChild(div);
+      });
+      moreModal.style.display = 'flex';
+    });
+
+    closeModal.addEventListener('click', () => {
+      moreModal.style.display = 'none';
+    });
+  </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
