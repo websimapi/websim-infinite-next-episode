@@ -20,7 +20,14 @@
       transform: translateX(-50%);
       z-index: 10;
       width: 90%;
-      max-width: 600px;
+      max-width: 1200px;
+    }
+    #searchBarWrapper {
+      display: flex;
+      gap: 8px;
+    }
+    #seriesSearch {
+      flex-grow: 1;
     }
     #searchContainer input, 
     #searchContainer button {
@@ -256,8 +263,8 @@
 <body>
   <!-- Search Bar + Existing Series List -->
   <div id="searchContainer">
-    <input id="seriesSearch" type="text" placeholder="Filter series or enter prompt to generate..." />
-    <div id="searchButtons">
+    <div id="searchBarWrapper">
+      <input id="seriesSearch" type="text" placeholder="Filter series or enter prompt to generate..." />
       <button id="generateButton">Generate</button>
     </div>
     <h2 style="margin:12px 0 6px; color: var(--primary-color);">Existing Series</h2>
