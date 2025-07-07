@@ -258,7 +258,6 @@
   <div id="searchContainer">
     <input id="seriesSearch" type="text" placeholder="Filter series or enter prompt to generate..." />
     <div id="searchButtons">
-      <button id="searchButton">Search</button>
       <button id="generateButton">Generate</button>
     </div>
     <h2 style="margin:12px 0 6px; color: var(--primary-color);">Existing Series</h2>
@@ -298,7 +297,6 @@
 
     // DOM refs
     const searchContainer = document.getElementById('searchContainer');
-    const searchButton = document.getElementById('searchButton');
     const generateButton = document.getElementById('generateButton');
     const seriesSearch = document.getElementById('seriesSearch');
     const player = document.getElementById('player');
@@ -323,6 +321,7 @@
     let allSeries = [];
     let currentIndex = 0;
     let autoTimer = null;
+    let searchTimeout;
 
     // Subscribe and render existing series
     room.collection('series').subscribe(records => {
@@ -381,15 +380,12 @@
       initPlayer();
     }
 
-    searchButton.addEventListener('click', () => {
-      const query = seriesSearch.value.trim().toLowerCase();
-      displaySeriesList(allSeries, query);
-    });
-
     seriesSearch.addEventListener('input', () => {
-        if (seriesSearch.value.trim() === '') {
-            displaySeriesList(allSeries);
-        }
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        const query = seriesSearch.value.trim().toLowerCase();
+        displaySeriesList(allSeries, query);
+      }, 500); // Auto-filter after 500ms of inactivity
     });
 
     generateButton.addEventListener('click', async () => {
