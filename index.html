@@ -26,6 +26,10 @@
     #searchContainer button {
       padding: 10px; font-size: 1em;
     }
+    #searchButtons {
+      display: flex;
+      gap: 8px;
+    }
     #seriesList {
       margin-top: 12px;
       display: grid;
@@ -252,9 +256,11 @@
 <body>
   <!-- Search Bar + Existing Series List -->
   <div id="searchContainer">
-    <input id="seriesSearch" type="text" placeholder="Search for a series or generate new..." />
-    <button id="filterButton">Search Existing</button>
-    <button id="generateButton">Generate</button>
+    <input id="seriesSearch" type="text" placeholder="Filter series or enter prompt to generate..." />
+    <div id="searchButtons">
+      <button id="searchButton">Search</button>
+      <button id="generateButton">Generate</button>
+    </div>
     <h2 style="margin:12px 0 6px; color: var(--primary-color);">Existing Series</h2>
     <div id="seriesList"></div>
   </div>
@@ -292,7 +298,7 @@
 
     // DOM refs
     const searchContainer = document.getElementById('searchContainer');
-    const filterButton = document.getElementById('filterButton');
+    const searchButton = document.getElementById('searchButton');
     const generateButton = document.getElementById('generateButton');
     const seriesSearch = document.getElementById('seriesSearch');
     const player = document.getElementById('player');
@@ -309,78 +315,106 @@
     const episodeList = document.getElementById('episodeList');
     const seriesList = document.getElementById('seriesList');
 
-    // Initialize Websim DB and user
+    // Initialize Websim DB and current user
     const room = new WebsimSocket();
     const currentUser = await window.websim.getCurrentUser();
+
     let seriesData = null;
+    let allSeries = [];
     let currentIndex = 0;
     let autoTimer = null;
 
-    // -- NEW: displaySeriesList function to render existing series --
-    function displaySeriesList(records) {
+    // Subscribe and render existing series
+    room.collection('series').subscribe(records => {
+      allSeries = records;
+      displaySeriesList(allSeries);
+    });
+
+    function displaySeriesList(records, filterText = '') {
       seriesList.innerHTML = '';
-      if (!records.length) {
-        seriesList.innerHTML = '<p style="color: var(--text-color); text-align: center;">No series found.</p>';
-        return;
-      }
-      records.forEach(rec => {
+      const filteredRecords = filterText
+        ? records.filter(rec => rec.title.toLowerCase().includes(filterText))
+        : records;
+
+      filteredRecords.forEach(rec => {
         const card = document.createElement('div');
         card.className = 'seriesCard';
-        // parse seasons JSON
-        let seasonsArr = [];
-        try { seasonsArr = JSON.parse(rec.seasons); } catch (e) {}
-        const seasonCount = seasonsArr.length;
-        const episodeCount = seasonsArr.reduce((sum, s) => sum + (s.episodes?.length || 0), 0);
         card.innerHTML = `
-          <img src="${rec.seriesLogoUrl}" alt="${rec.seriesTitle} Logo" />
-          <h3>${rec.seriesTitle}</h3>
-          <p>${seasonCount} Season${seasonCount !== 1 ? 's' : ''}, ${episodeCount} Episode${episodeCount !== 1 ? 's' : ''}</p>
+          <img src="${rec.logoUrl}" alt="${rec.title}" />
+          <h3>${rec.title}</h3>
+          <p>By ${rec.username}${rec.forked_from ? ' (Forked)' : ''}</p>
         `;
-        card.addEventListener('click', () => {
-          // prepare seriesData and launch player
-          seriesData = {
-            ...rec,
-            seasons: seasonsArr,
-            currentSeason: rec.currentSeason || 0
-          };
-          initPlayer();
-        });
+        card.addEventListener('click', () => loadExistingSeries(rec));
         seriesList.appendChild(card);
       });
     }
 
-    // Subscribe to DB updates for series
-    room.collection('series').subscribe(displaySeriesList);
+    async function loadExistingSeries(rec) {
+      searchContainer.style.display = 'none';
+      if (rec.username === currentUser.username) {
+        const seasons = JSON.parse(rec.seasons);
+        seriesData = {
+          seriesTitle: rec.title,
+          seriesLogoUrl: rec.logoUrl,
+          seasons,
+          currentSeason: 0,
+          id: rec.id,
+          forked_from: rec.forked_from
+        };
+      } else {
+        const forked = await room.collection('series').upsert({
+          title: rec.title,
+          logoUrl: rec.logoUrl,
+          seasons: rec.seasons,
+          forked_from: rec.id
+        });
+        const seasons = JSON.parse(forked.seasons);
+        seriesData = {
+          seriesTitle: forked.title,
+          seriesLogoUrl: forked.logoUrl,
+          seasons,
+          currentSeason: 0,
+          id: forked.id,
+          forked_from: forked.forked_from
+        };
+      }
+      initPlayer();
+    }
 
-    // -- NEW: generateButton handler to create a new series via AI and save to DB --
+    searchButton.addEventListener('click', () => {
+      const query = seriesSearch.value.trim().toLowerCase();
+      displaySeriesList(allSeries, query);
+    });
+
+    seriesSearch.addEventListener('input', () => {
+        if (seriesSearch.value.trim() === '') {
+            displaySeriesList(allSeries);
+        }
+    });
+
     generateButton.addEventListener('click', async () => {
       const query = seriesSearch.value.trim();
       if (!query) return;
       generateButton.disabled = true;
-      generateButton.textContent = 'Generating...';
-      try {
-        const data = await generateSeries(query);
-        // build record payload
-        const payload = {
-          seriesTitle: data.seriesTitle,
-          seasons: JSON.stringify([{ seasonPlot: data.seasonPlot, episodes: data.episodes }]),
-          currentSeason: 0,
-          seriesLogoUrl: data.seriesLogoUrl,
-          forkedFrom: null
-        };
-        const saved = await room.collection('series').upsert(payload);
-        seriesData = {
-          ...saved,
-          seasons: JSON.parse(payload.seasons),
-          currentSeason: 0
-        };
-        initPlayer();
-      } catch (err) {
-        console.error(err);
-      } finally {
-        generateButton.disabled = false;
-        generateButton.textContent = 'Generate';
-      }
+      generateButton.textContent = 'Loading...';
+      const initialData = await generateSeries(query);
+      seriesData = {
+        seriesTitle: initialData.seriesTitle,
+        seriesLogoUrl: initialData.seriesLogoUrl,
+        seasons: [{ seasonPlot: initialData.seasonPlot, episodes: initialData.episodes }],
+        currentSeason: 0
+      };
+      // Save to DB
+      const rec = await room.collection('series').upsert({
+        title: seriesData.seriesTitle,
+        logoUrl: seriesData.seriesLogoUrl,
+        seasons: JSON.stringify(seriesData.seasons),
+        forked_from: null
+      });
+      seriesData.id = rec.id;
+      initPlayer();
+      generateButton.disabled = false;
+      generateButton.textContent = 'Generate';
     });
 
     async function generateSeries(query) {
