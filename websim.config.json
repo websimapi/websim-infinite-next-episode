@@ -1,0 +1,26 @@
+{
+  "database": {
+    "schema": {
+      "series": {
+        "title": {
+          "type": "text",
+          "description": "The title of the TV series."
+        },
+        "logoUrl": {
+          "type": "text",
+          "description": "URL for the series logo image."
+        },
+        "seasons": {
+          "type": "text",
+          "description": "A JSON string containing all seasons and episode data."
+        },
+        "forked_from": {
+          "type": "uuid",
+          "description": "The ID of the original series this was forked from, if applicable."
+        }
+      }
+    },
+    "instructions": "This database stores user-generated TV series. The 'seasons' column is a JSON string which contains an array of season objects. Each season object has a 'seasonPlot' and an array of 'episodes'. Each episode object contains a 'title', 'plot', and 'imageUrl'."
+  }
+}
+

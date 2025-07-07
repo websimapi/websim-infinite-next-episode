@@ -182,13 +182,15 @@
       z-index: 20;
     }
     #moreEpisodesModal .modalContent {
-      background: #fff;
+      background: var(--surface-color);
       padding: 20px;
       max-height: 80%;
       overflow-y: auto;
       width: 80%;
+      max-width: 1000px; /* Added max-width */
       border-radius: 8px;
       position: relative;
+      display: flex; /* For layout */
     }
     #moreEpisodesModal .modalContent img {
       width: 100%;
@@ -203,6 +205,80 @@
       border: none;
       font-size: 1.5em;
       cursor: pointer;
+      color: var(--text-color); /* ensure visibility */
+      z-index: 10; /* Make sure it's on top */
+    }
+
+    .modalLayout {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      gap: 20px;
+    }
+
+    #seasonTabs {
+      flex: 0 0 150px;
+      border-right: 1px solid var(--border-color);
+      padding-right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
+
+    #seasonTabs button {
+      width: 100%;
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 1em;
+    }
+
+    #seasonTabs button.active {
+      background-color: var(--primary-color);
+      color: var(--surface-color);
+      font-weight: bold;
+    }
+
+    #episodeListView {
+      flex-grow: 1;
+      overflow-y: auto;
+      padding-right: 10px; /* space for scrollbar */
+    }
+
+    .episode-list-item {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 15px;
+      padding: 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+    .episode-list-item:hover {
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+    .episode-list-item img {
+      width: 160px;
+      height: 90px;
+      object-fit: cover;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .episode-list-item .details {
+      display: flex;
+      flex-direction: column;
+      min-width: 0; /* Prevents text overflow issues in flexbox */
+    }
+    .episode-list-item h3 {
+      margin: 0 0 8px;
+      font-size: 1.1em;
+      color: var(--primary-color);
+    }
+    .episode-list-item p {
+      margin: 0;
+      font-size: 0.9em;
+      color: var(--text-color);
+      line-height: 1.4;
     }
 
     /* Dark mode variables */
@@ -316,7 +392,10 @@
   <div id="moreEpisodesModal">
     <div class="modalContent">
       <button id="closeModal">&times;</button>
-      <div id="episodeList"></div>
+      <div class="modalLayout">
+        <div id="seasonTabs"></div>
+        <div id="episodeListView"></div>
+      </div>
     </div>
   </div>
 
@@ -338,7 +417,8 @@
     const progressBar = nextButton.querySelector('.progress');
     const moreModal = document.getElementById('moreEpisodesModal');
     const closeModal = document.getElementById('closeModal');
-    const episodeList = document.getElementById('episodeList');
+    const seasonTabsContainer = document.getElementById('seasonTabs');
+    const episodeListView = document.getElementById('episodeListView');
     const seriesList = document.getElementById('seriesList');
 
     // Initialize Websim DB and current user
@@ -495,11 +575,11 @@ You are a helpful assistant. Given a TV series title, episode title, and episode
         const { prompt } = JSON.parse(promptRes.content);
 
         // 2b) Generate the episode image
-        const imgRes = await websim.imageGen({
+        const img = await websim.imageGen({
           prompt,
           aspect_ratio: '16:9'
         });
-        ep.imageUrl = imgRes.url;
+        ep.imageUrl = img.url;
       }
 
       // 3) AI: generate a one-time series logo
@@ -657,26 +737,55 @@ You are a helpful assistant. Given a TV series title, its season number, an epis
     });
 
     moreButton.addEventListener('click', () => {
-      episodeList.innerHTML = '';
-      const season = seriesData.seasons[seriesData.currentSeason];
+      populateModal(seriesData.currentSeason);
+      moreModal.style.display = 'flex';
+    });
+
+    function populateModal(activeSeasonIndex) {
+      // 1. Populate Season Tabs
+      seasonTabsContainer.innerHTML = '';
+      seriesData.seasons.forEach((season, index) => {
+        const tab = document.createElement('button');
+        tab.textContent = `Season ${index + 1}`;
+        if (index === activeSeasonIndex) {
+          tab.className = 'active';
+        }
+        tab.addEventListener('click', () => {
+          // Re-populate with the new season as active
+          populateModal(index);
+        });
+        seasonTabsContainer.appendChild(tab);
+      });
+
+      // 2. Populate Episode List View for the active season
+      episodeListView.innerHTML = '';
+      const season = seriesData.seasons[activeSeasonIndex];
       season.episodes.forEach((ep, idx) => {
-        const card = document.createElement('div');
-        card.className = 'episodeCard';
-        card.innerHTML = `
+        const item = document.createElement('div');
+        item.className = 'episode-list-item';
+        item.innerHTML = `
           <img src="${ep.imageUrl}" alt="${ep.title}" />
-          <h3>${ep.title}</h3>
-          <p>${ep.plot}</p>
+          <div class="details">
+            <h3>S:${activeSeasonIndex + 1} E:${idx + 1} - ${ep.title}</h3>
+            <p>${ep.plot}</p>
+          </div>
         `;
-        card.addEventListener('click', () => {
+        item.addEventListener('click', () => {
+          // If switching seasons, update currentSeason
+          if (seriesData.currentSeason !== activeSeasonIndex) {
+            seriesData.currentSeason = activeSeasonIndex;
+          }
           currentIndex = idx;
           moreModal.style.display = 'none';
+          clearTimeout(autoTimer); // Stop timer when selecting from modal
           updateUI();
           startAutoNext();
         });
-        episodeList.appendChild(card);
+        episodeListView.appendChild(item);
       });
-      moreModal.style.display = 'flex';
-    });
+      // Scroll to top of list
+      episodeListView.scrollTop = 0;
+    }
 
     closeModal.addEventListener('click', () => {
       moreModal.style.display = 'none';
