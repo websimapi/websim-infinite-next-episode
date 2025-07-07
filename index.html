@@ -50,6 +50,8 @@
       cursor: pointer;
       transition: transform 0.2s, box-shadow 0.2s;
       text-align: center;
+      position: relative;
+      padding-bottom: 35px; /* Space for author info */
     }
     .seriesCard:hover {
       transform: translateY(-4px);
@@ -69,6 +71,25 @@
     .seriesCard p {
       font-size: 0.85em;
       color: var(--text-color);
+      margin: 0;
+    }
+    .author-info {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.75em;
+      background-color: rgba(0,0,0,0.5);
+      padding: 3px 6px;
+      border-radius: 12px;
+    }
+    .author-info img {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      object-fit: cover;
       margin: 0;
     }
     #player {
@@ -348,7 +369,10 @@
         card.innerHTML = `
           <img src="${rec.logoUrl}" alt="${rec.title}" />
           <h3>${rec.title}</h3>
-          <p>By ${rec.username}${rec.forked_from ? ' (Forked)' : ''}</p>
+          <div class="author-info">
+            <img src="https://images.websim.com/avatar/${rec.username}" alt="${rec.username}" />
+            <span>${rec.username}${rec.forked_from ? ' (Forked)' : ''}</span>
+          </div>
         `;
         card.addEventListener('click', () => loadExistingSeries(rec));
         seriesList.appendChild(card);
