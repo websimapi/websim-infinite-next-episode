@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Infinite Next Episode</title>
-  <link href="https://fonts.googleapis.com/css2?family=Bungee&display=swap" rel="stylesheet">
   <!-- Add importmap for WebsimSocket -->
   <script type="importmap">
   {
@@ -401,34 +400,6 @@
   </div>
 
   <script type="module">
-    // Code snippet to display a title screen for automated browsers.
-    (async () => {
-      if (navigator.webdriver) {
-        // Hide main app content
-        const searchContainer = document.getElementById('searchContainer');
-        if (searchContainer) searchContainer.style.display = 'none';
-        const player = document.getElementById('player');
-        if (player) player.style.display = 'none';
-
-        const overlay = document.createElement('div');
-        overlay.id = 'title-screen-overlay';
-        Object.assign(overlay.style, {
-          position: 'fixed',
-          top: '0',
-          left: '0',
-          width: '100vw',
-          height: '100vh',
-          background: '#000',
-          zIndex: '99999',
-          overflow: 'hidden'
-        });
-        document.body.prepend(overlay);
-        const imageHTML = `<img src="https://api.websim.com/blobs/0197e282-b09d-79c4-8158-c1e284f799c1.png" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" alt="" />`;
-        const textHTML = `<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ffffff; font-size: 72px; font-family: 'Bungee', sans-serif; text-shadow: 2px 2px 8px #000000; text-align: center; white-space: pre-wrap; width: 90%; line-height: 1.2;">Flagged!</div>`;
-        overlay.innerHTML = imageHTML + textHTML;
-      }
-    })();
-
     import { WebsimSocket } from '@websim/websim-socket';
 
     // DOM refs
