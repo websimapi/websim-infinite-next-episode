@@ -4,6 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Infinite Next Episode</title>
+  <!-- Add importmap for WebsimSocket -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@websim/websim-socket": "https://esm.websim.com/@websim/websim-socket"
+    }
+  }
+  </script>
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
     #searchContainer {
@@ -11,10 +19,46 @@
       top: 20px; left: 50%;
       transform: translateX(-50%);
       z-index: 10;
+      width: 90%;
+      max-width: 600px;
     }
     #searchContainer input, 
     #searchContainer button {
       padding: 10px; font-size: 1em;
+    }
+    #seriesList {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px,1fr));
+      gap: 12px;
+    }
+    .seriesCard {
+      background: var(--surface-color);
+      padding: 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      text-align: center;
+    }
+    .seriesCard:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+    }
+    .seriesCard img {
+      width: 100%;
+      height: 80px;
+      object-fit: contain;
+      margin-bottom: 6px;
+    }
+    .seriesCard h3 {
+      margin: 4px 0;
+      font-size: 1em;
+      color: var(--primary-color);
+    }
+    .seriesCard p {
+      font-size: 0.85em;
+      color: var(--text-color);
+      margin: 0;
     }
     #player {
       display: none;
@@ -202,10 +246,12 @@
   </style>
 </head>
 <body>
-  <!-- Search Bar -->
+  <!-- Search Bar + Existing Series List -->
   <div id="searchContainer">
     <input id="seriesSearch" type="text" placeholder="Search for a series..." />
     <button id="searchButton">Search</button>
+    <h2 style="margin:12px 0 6px; color: var(--primary-color);">Existing Series</h2>
+    <div id="seriesList"></div>
   </div>
 
   <!-- Main Player -->
@@ -237,6 +283,9 @@
   </div>
 
   <script type="module">
+    import { WebsimSocket } from '@websim/websim-socket';
+
+    // DOM refs
     const searchContainer = document.getElementById('searchContainer');
     const searchButton = document.getElementById('searchButton');
     const seriesSearch = document.getElementById('seriesSearch');
@@ -252,10 +301,65 @@
     const moreModal = document.getElementById('moreEpisodesModal');
     const closeModal = document.getElementById('closeModal');
     const episodeList = document.getElementById('episodeList');
+    const seriesList = document.getElementById('seriesList');
+
+    // Initialize Websim DB and current user
+    const room = new WebsimSocket();
+    const currentUser = await window.websim.getCurrentUser();
 
     let seriesData = null;
     let currentIndex = 0;
     let autoTimer = null;
+
+    // Subscribe and render existing series
+    room.collection('series').subscribe(displaySeriesList);
+
+    function displaySeriesList(records) {
+      seriesList.innerHTML = '';
+      records.forEach(rec => {
+        const card = document.createElement('div');
+        card.className = 'seriesCard';
+        card.innerHTML = `
+          <img src="${rec.logoUrl}" alt="${rec.title}" />
+          <h3>${rec.title}</h3>
+          <p>By ${rec.username}${rec.forked_from ? ' (Forked)' : ''}</p>
+        `;
+        card.addEventListener('click', () => loadExistingSeries(rec));
+        seriesList.appendChild(card);
+      });
+    }
+
+    async function loadExistingSeries(rec) {
+      searchContainer.style.display = 'none';
+      if (rec.username === currentUser.username) {
+        const seasons = JSON.parse(rec.seasons);
+        seriesData = {
+          seriesTitle: rec.title,
+          seriesLogoUrl: rec.logoUrl,
+          seasons,
+          currentSeason: 0,
+          id: rec.id,
+          forked_from: rec.forked_from
+        };
+      } else {
+        const forked = await room.collection('series').upsert({
+          title: rec.title,
+          logoUrl: rec.logoUrl,
+          seasons: rec.seasons,
+          forked_from: rec.id
+        });
+        const seasons = JSON.parse(forked.seasons);
+        seriesData = {
+          seriesTitle: forked.title,
+          seriesLogoUrl: forked.logoUrl,
+          seasons,
+          currentSeason: 0,
+          id: forked.id,
+          forked_from: forked.forked_from
+        };
+      }
+      initPlayer();
+    }
 
     searchButton.addEventListener('click', async () => {
       const query = seriesSearch.value.trim();
@@ -269,6 +373,14 @@
         seasons: [{ seasonPlot: initialData.seasonPlot, episodes: initialData.episodes }],
         currentSeason: 0
       };
+      // Save to DB
+      const rec = await room.collection('series').upsert({
+        title: seriesData.seriesTitle,
+        logoUrl: seriesData.seriesLogoUrl,
+        seasons: JSON.stringify(seriesData.seasons),
+        forked_from: null
+      });
+      seriesData.id = rec.id;
       initPlayer();
     });
 
@@ -303,7 +415,7 @@ Respond directly with JSON following this schema, and no extra text:
             {
               role: 'system',
               content: `
-You are a helpful assistant. Given a TV series title, episode title, and episode plot, craft a vivid, detailed prompt for an AI image generator that will produce a promotional poster scene with no text. Respond with pure JSON:
+You are a helpful assistant. Given a TV series title, episode title, and episode plot, craft a vivid, detailed prompt for an AI image generator to produce a promotional poster scene with no text. Respond with pure JSON:
 {
   "prompt": string
 }`
@@ -457,7 +569,6 @@ You are a helpful assistant. Given a TV series title, its season number, an epis
       }
     }
 
-    // Load and switch to the next season
     async function loadNextSeason() {
       clearTimeout(autoTimer);
       nextButton.disabled = true;
@@ -465,6 +576,11 @@ You are a helpful assistant. Given a TV series title, its season number, an epis
       progressBar.style.width = '0';
       nextButton.querySelector('span').textContent = 'Loading...';
       await generateNextSeason();
+      // Persist updated seasons
+      await room.collection('series').upsert({
+        id: seriesData.id,
+        seasons: JSON.stringify(seriesData.seasons)
+      });
       seriesData.currentSeason++;
       currentIndex = 0;
       updateUI();
