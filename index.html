@@ -108,6 +108,81 @@
       font-size: 1.5em;
       cursor: pointer;
     }
+
+    /* Dark mode variables */
+    :root {
+      --bg-color: #121212;
+      --surface-color: #1e1e1e;
+      --primary-color: #bb86fc;
+      --secondary-color: #03dac6;
+      --text-color: #e0e0e0;
+      --border-color: #333;
+    }
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+    }
+    /* Search bar styling */
+    #searchContainer input,
+    #searchContainer button {
+      background: var(--surface-color);
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+    }
+    /* Buttons */
+    button {
+      background: var(--surface-color);
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+    }
+    #nextButton .progress {
+      background: linear-gradient(to right, var(--secondary-color), var(--primary-color));
+    }
+    /* Modal */
+    #moreEpisodesModal {
+      background: rgba(0,0,0,0.9);
+    }
+    #moreEpisodesModal .modalContent {
+      background: var(--surface-color);
+      color: var(--text-color);
+    }
+    #closeModal {
+      color: var(--text-color);
+    }
+    /* Grid layout for episode cards */
+    #episodeList {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px,1fr));
+      gap: 16px;
+      padding: 20px 0;
+    }
+    #episodeList .episodeCard {
+      background: var(--surface-color);
+      padding: 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    #episodeList .episodeCard:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+    }
+    #episodeList .episodeCard img {
+      width: 100%;
+      border-radius: 4px;
+    }
+    #episodeList .episodeCard h3 {
+      margin: 10px 0 5px;
+      font-size: 1em;
+      color: var(--primary-color);
+    }
+    #episodeList .episodeCard p {
+      font-size: 0.9em;
+      color: var(--text-color);
+      max-height: 3.6em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   </style>
 </head>
 <body>
@@ -167,7 +242,12 @@
       if (!query) return;
       searchButton.disabled = true;
       searchButton.textContent = 'Loading...';
-      seriesData = await generateSeries(query);
+      const initialData = await generateSeries(query);
+      seriesData = {
+        seriesTitle: initialData.seriesTitle,
+        seasons: [{ seasonPlot: initialData.seasonPlot, episodes: initialData.episodes }],
+        currentSeason: 0
+      };
       initPlayer();
     });
 
@@ -205,6 +285,33 @@ Respond directly with JSON following this schema, and no extra text:
       return data;
     }
 
+    // Generate the next season via AI
+    async function generateNextSeason() {
+      const seasonNum = seriesData.seasons.length + 1;
+      const prev = seriesData.seasons[seriesData.currentSeason];
+      const count = prev.episodes.length;
+      const completion = await websim.chat.completions.create({
+        messages: [
+          {
+            role: 'system',
+            content: `You are a helpful assistant. Generate season ${seasonNum} for the series "${seriesData.seriesTitle}". Provide JSON following:
+{ seasonPlot: string; episodes: [ { title: string; plot: string; } ] }
+Respond with pure JSON. Generate exactly ${count} episodes.`
+          }
+        ],
+        json: true
+      });
+      const data = JSON.parse(completion.content);
+      for (let ep of data.episodes) {
+        const img = await websim.imageGen({
+          prompt: `A promotional poster for season ${seasonNum}, episode "${ep.title}" of "${seriesData.seriesTitle}", plot: ${ep.plot}`,
+          aspect_ratio: '16:9'
+        });
+        ep.imageUrl = img.url;
+      }
+      seriesData.seasons.push({ seasonPlot: data.seasonPlot, episodes: data.episodes });
+    }
+
     function initPlayer() {
       searchContainer.style.display = 'none';
       player.style.display = 'block';
@@ -214,21 +321,24 @@ Respond directly with JSON following this schema, and no extra text:
     }
 
     function updateUI() {
-      const current = seriesData.episodes[currentIndex];
+      // pick current season & episode
+      const season = seriesData.seasons[seriesData.currentSeason];
+      const episodes = season.episodes;
+      const current = episodes[currentIndex];
       document.body.style.background = `url('${current.imageUrl}') center/cover no-repeat`;
       seriesTitleElem.textContent = seriesData.seriesTitle;
       episodeTitleElem.textContent = current.title;
 
-      const nextEp = seriesData.episodes[currentIndex + 1];
+      const nextEp = episodes[currentIndex + 1];
       if (nextEp) {
         upNextImage.src = nextEp.imageUrl;
         nextButton.disabled = false;
+        nextButton.querySelector('span').textContent = 'Next Episode';
       } else {
         upNextImage.src = '';
-        nextButton.disabled = true;
-        clearTimeout(autoTimer);
-        progressBar.style.transition = 'none';
-        progressBar.style.width = '0';
+        // end of season
+        nextButton.disabled = false;
+        nextButton.querySelector('span').textContent = 'Next Season?';
       }
     }
 
@@ -240,34 +350,67 @@ Respond directly with JSON following this schema, and no extra text:
         progressBar.style.width = '100%';
       });
       autoTimer = setTimeout(() => {
-        nextEpisode();
+        const season = seriesData.seasons[seriesData.currentSeason];
+        if (currentIndex < season.episodes.length - 1) {
+          nextEpisode();
+        } else {
+          loadNextSeason();
+        }
       }, 15000);
     }
 
     function nextEpisode() {
       clearTimeout(autoTimer);
+      const season = seriesData.seasons[seriesData.currentSeason];
       currentIndex++;
-      if (currentIndex < seriesData.episodes.length) {
+      if (currentIndex < season.episodes.length) {
         updateUI();
         startAutoNext();
       }
     }
 
+    // Load and switch to the next season
+    async function loadNextSeason() {
+      clearTimeout(autoTimer);
+      nextButton.disabled = true;
+      progressBar.style.transition = 'none';
+      progressBar.style.width = '0';
+      nextButton.querySelector('span').textContent = 'Loading...';
+      await generateNextSeason();
+      seriesData.currentSeason++;
+      currentIndex = 0;
+      updateUI();
+      startAutoNext();
+    }
+
     nextButton.addEventListener('click', () => {
       clearTimeout(autoTimer);
-      nextEpisode();
+      const season = seriesData.seasons[seriesData.currentSeason];
+      if (currentIndex < season.episodes.length - 1) {
+        nextEpisode();
+      } else {
+        loadNextSeason();
+      }
     });
 
     moreButton.addEventListener('click', () => {
       episodeList.innerHTML = '';
-      seriesData.episodes.forEach(ep => {
-        const div = document.createElement('div');
-        div.innerHTML = `
+      const season = seriesData.seasons[seriesData.currentSeason];
+      season.episodes.forEach((ep, idx) => {
+        const card = document.createElement('div');
+        card.className = 'episodeCard';
+        card.innerHTML = `
           <img src="${ep.imageUrl}" alt="${ep.title}" />
           <h3>${ep.title}</h3>
           <p>${ep.plot}</p>
         `;
-        episodeList.appendChild(div);
+        card.addEventListener('click', () => {
+          currentIndex = idx;
+          moreModal.style.display = 'none';
+          updateUI();
+          startAutoNext();
+        });
+        episodeList.appendChild(card);
       });
       moreModal.style.display = 'flex';
     });
@@ -279,4 +422,3 @@ Respond directly with JSON following this schema, and no extra text:
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
-
