@@ -252,8 +252,9 @@
 <body>
   <!-- Search Bar + Existing Series List -->
   <div id="searchContainer">
-    <input id="seriesSearch" type="text" placeholder="Search for a series..." />
-    <button id="searchButton">Search</button>
+    <input id="seriesSearch" type="text" placeholder="Search for a series or generate new..." />
+    <button id="filterButton">Search Existing</button>
+    <button id="generateButton">Generate</button>
     <h2 style="margin:12px 0 6px; color: var(--primary-color);">Existing Series</h2>
     <div id="seriesList"></div>
   </div>
@@ -291,7 +292,8 @@
 
     // DOM refs
     const searchContainer = document.getElementById('searchContainer');
-    const searchButton = document.getElementById('searchButton');
+    const filterButton = document.getElementById('filterButton');
+    const generateButton = document.getElementById('generateButton');
     const seriesSearch = document.getElementById('seriesSearch');
     const player = document.getElementById('player');
     const seriesTitleElem = document.getElementById('seriesTitle');
@@ -315,77 +317,15 @@
     let currentIndex = 0;
     let autoTimer = null;
 
-    // Subscribe and render existing series
+    // Subscribe and render all existing series
     room.collection('series').subscribe(displaySeriesList);
 
-    function displaySeriesList(records) {
-      seriesList.innerHTML = '';
-      records.forEach(rec => {
-        const card = document.createElement('div');
-        card.className = 'seriesCard';
-        card.innerHTML = `
-          <img src="${rec.logoUrl}" alt="${rec.title}" />
-          <h3>${rec.title}</h3>
-          <p>By ${rec.username}${rec.forked_from ? ' (Forked)' : ''}</p>
-        `;
-        card.addEventListener('click', () => loadExistingSeries(rec));
-        seriesList.appendChild(card);
-      });
-    }
-
-    async function loadExistingSeries(rec) {
-      searchContainer.style.display = 'none';
-      if (rec.username === currentUser.username) {
-        const seasons = JSON.parse(rec.seasons);
-        seriesData = {
-          seriesTitle: rec.title,
-          seriesLogoUrl: rec.logoUrl,
-          seasons,
-          currentSeason: 0,
-          id: rec.id,
-          forked_from: rec.forked_from
-        };
-      } else {
-        const forked = await room.collection('series').upsert({
-          title: rec.title,
-          logoUrl: rec.logoUrl,
-          seasons: rec.seasons,
-          forked_from: rec.id
-        });
-        const seasons = JSON.parse(forked.seasons);
-        seriesData = {
-          seriesTitle: forked.title,
-          seriesLogoUrl: forked.logoUrl,
-          seasons,
-          currentSeason: 0,
-          id: forked.id,
-          forked_from: forked.forked_from
-        };
-      }
-      initPlayer();
-    }
-
-    searchButton.addEventListener('click', async () => {
-      const query = seriesSearch.value.trim();
-      if (!query) return;
-      searchButton.disabled = true;
-      searchButton.textContent = 'Loading...';
-      const initialData = await generateSeries(query);
-      seriesData = {
-        seriesTitle: initialData.seriesTitle,
-        seriesLogoUrl: initialData.seriesLogoUrl,
-        seasons: [{ seasonPlot: initialData.seasonPlot, episodes: initialData.episodes }],
-        currentSeason: 0
-      };
-      // Save to DB
-      const rec = await room.collection('series').upsert({
-        title: seriesData.seriesTitle,
-        logoUrl: seriesData.seriesLogoUrl,
-        seasons: JSON.stringify(seriesData.seasons),
-        forked_from: null
-      });
-      seriesData.id = rec.id;
-      initPlayer();
+    // Filter button: full-text filter existing series
+    filterButton.addEventListener('click', async () => {
+      const q = seriesSearch.value.trim().toLowerCase();
+      const recs = await room.collection('series').getList();
+      const filtered = recs.filter(r => r.title.toLowerCase().includes(q));
+      displaySeriesList(filtered);
     });
 
     async function generateSeries(query) {
