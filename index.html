@@ -299,15 +299,15 @@ Respond directly with JSON following this schema, and no extra text:
       // 2) AI: generate poster image for each episode (no text)
       for (let ep of data.episodes) {
         const imgRes = await websim.imageGen({
-          prompt: `A promotional poster for the episode titled "${ep.title}" of the series "${data.seriesTitle}", plot: ${ep.plot}. No text in the image.`,
+          prompt: `A promotional poster for the episode titled "${ep.title}" of the series "${data.seriesTitle}". Plot: ${ep.plot}. Do not include any text, words, or letters in the image.`,
           aspect_ratio: '16:9'
         });
         ep.imageUrl = imgRes.url;
       }
 
-      // 3) AI: generate a one-time series logo
+      // 3) AI: generate a one-time series logo (no text)
       const logoRes = await websim.imageGen({
-        prompt: `A stylized logo for the TV series titled "${data.seriesTitle}".`,
+        prompt: `A stylized icon for the TV series, representing the title "${data.seriesTitle}" without using any text, words, or letters.`,
         transparent: true,
         aspect_ratio: '1:1'
       });
@@ -335,7 +335,7 @@ Respond with pure JSON. Generate exactly ${count} episodes.`
       const data = JSON.parse(completion.content);
       for (let ep of data.episodes) {
         const img = await websim.imageGen({
-          prompt: `A promotional poster for season ${seasonNum}, episode "${ep.title}" of "${seriesData.seriesTitle}", plot: ${ep.plot}. No text in the image.`,
+          prompt: `A promotional poster for season ${seasonNum}, episode "${ep.title}" of "${seriesData.seriesTitle}". Plot: ${ep.plot}. Do not include any text, words, or letters in the image.`,
           aspect_ratio: '16:9'
         });
         ep.imageUrl = img.url;
