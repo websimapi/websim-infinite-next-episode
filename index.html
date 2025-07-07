@@ -74,6 +74,10 @@
       height: 100px;
       width: auto;
       object-fit: contain;
+      background: var(--surface-color);
+      border: 2px solid var(--primary-color);
+      border-radius: 8px;
+      padding: 4px;
     }
     #seriesTitle {
       position: absolute;
@@ -407,7 +411,7 @@ Respond directly with JSON following this schema, and no extra text:
       });
       const data = JSON.parse(completion.content);
 
-      // 2) AI: generate poster image for each episode
+      // 2) AI: generate poster image for each episode via a dedicated prompt-generator
       for (let ep of data.episodes) {
         // 2a) Generate a tailored image prompt for this new episode
         const promptRes = await websim.chat.completions.create({
@@ -435,17 +439,16 @@ You are a helpful assistant. Given a TV series title, episode title, and episode
         const { prompt } = JSON.parse(promptRes.content);
 
         // 2b) Generate the episode image
-        const img = await websim.imageGen({
+        const imgRes = await websim.imageGen({
           prompt,
           aspect_ratio: '16:9'
         });
-        ep.imageUrl = img.url;
+        ep.imageUrl = imgRes.url;
       }
 
       // 3) AI: generate a one-time series logo
       const logoRes = await websim.imageGen({
-        prompt: `A stylized logo for the TV series titled "${data.seriesTitle}", with a fully transparent background and no background color. Minimalistic design suitable for overlay, no text in the image.`,
-        transparent: true,
+        prompt: `A stylized logo for the TV series titled "${data.seriesTitle}", on a solid background with a decorative frame.`,
         aspect_ratio: '1:1'
       });
       data.seriesLogoUrl = logoRes.url;
